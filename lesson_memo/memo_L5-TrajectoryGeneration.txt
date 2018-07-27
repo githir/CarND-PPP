@@ -1,0 +1,589 @@
+---------- 13. Hybrid A* Pseudocode
+ハイブリッドA *疑似コード：
+以下の擬似コードは、自転車モデルを使用したA *検索アルゴリズムの実装の概要を示しています。次の変数とオブジェクトはコードで使用されていますが、定義されていません。
+
+State(x, y, theta, g, f)：記憶オブジェクトx、y座標、方向theta、および電流gおよびf値。grid：検索する領域を示す0と1の2次元配列。1は障害物に対応し、0は空きスペースに対応する。
+SPEED：自転車モデルで使用される車両の速度。
+LENGTH：自転車モデルで使用される車両の長さ。
+NUM_THETA_CELLS：円が分割されているセルの数。これは、私たちがすでに訪れた国を追跡するのに使用されます。
+ハイブリッドA *アルゴリズムの大部分はsearch関数内に含まれています。このexpand関数は、入力として状態と目標を取り、ステアリング角度の範囲に対して可能な次の状態のリストを返します。この関数には自転車モデルの実装とA *ヒューリスティック関数の呼び出しが含まれています。
+
+
+def expand(state, goal):
+    next_states = []
+    for delta in range(-35, 40, 5): 
+        # Create a trajectory with delta as the steering angle using the bicycle model:
+
+        # ---Begin bicycle model---
+        delta_rad = deg_to_rad(delta)
+        omega = SPEED/LENGTH * tan(delta_rad)
+        next_x = state.x + SPEED * cos(theta)
+        next_y = state.y + SPEED * sin(theta)
+        next_theta = normalize(state.theta + omega)
+        # ---End bicycle model-----
+
+        next_g = state.g + 1
+        next_f = next_g + heuristic(next_x, next_y, goal)
+
+        # Create a new State object with all of the "next" values.
+        state = State(next_x, next_y, next_theta, next_g, next_f)
+        next_states.append(state)
+
+    return next_states
+
+def search(grid, start, goal):
+    # The opened array keeps track of the stack of States objects we are 
+    # searching through.
+    opened = []
+    # 3D array of zeros with dimensions:
+    # (NUM_THETA_CELLS, grid x size, grid y size).
+    closed = [[[0 for x in range(grid[0])] for y in range(len(grid))] for cell in range(NUM_THETA_CELLS)]
+    # 3D array with same dimensions. Will be filled with State() objects to keep 
+    # track of the path through the grid. 
+    came_from = [[[0 for x in range(grid[0])] for y in range(len(grid))] for cell in range(NUM_THETA_CELLS)]
+
+    # Create new state object to start the search with.
+    x = start.x
+    y = start.y
+    theta = start.theta
+    g = 0
+    f = heuristic(start.x, start.y, goal)
+    state = State(x, y, theta, 0, f)
+    opened.append(state)
+
+    # The range from 0 to 2pi has been discretized into NUM_THETA_CELLS cells. 
+    # Here, theta_to_stack_number returns the cell that theta belongs to. 
+    # Smaller thetas (close to 0 when normalized  into the range from 0 to 2pi) 
+    # have lower stack numbers, and larger thetas (close to 2pi whe normalized)
+    # have larger stack numbers.
+    stack_number = theta_to_stack_number(state.theta)
+    closed[stack_number][index(state.x)][index(state.y)] = 1
+
+    # Store our starting state. For other states, we will store the previous state 
+    # in the path, but the starting state has no previous.
+    came_from[stack_number][index(state.x)][index(state.y)] = state
+
+    # While there are still states to explore:
+    while opened:
+        # Sort the states by f-value and start search using the state with the 
+        # lowest f-value. This is crucial to the A* algorithm; the f-value 
+        # improves search efficiency by indicating where to look first.
+        opened.sort(key=lambda state:state.f)
+        current = opened.pop(0)
+
+        # Check if the x and y coordinates are in the same grid cell as the goal. 
+        # (Note: The idx function returns the grid index for a given coordinate.)
+        if (idx(current.x) == goal[0]) and (idx(current.y) == goal.y):
+            # If so, the trajectory has reached the goal.
+            return path
+
+        # Otherwise, expand the current state to get a list of possible next states.
+        next_states = expand(current, goal)
+        for next_state in next_states:
+            # If we have expanded outside the grid, skip this next_state.
+            if next_states is not in the grid:
+                continue
+            # Otherwise, check that we haven't already visited this cell and
+            # that there is not an obstacle in the grid there.
+            stack_number = theta_to_stack_number(next_state.theta)
+            if closed_value[stack_number][idx(next_state.x)][idx(next_state.y)] == 0 and grid[idx(next_state.x)][idx(next_state.y)] == 0:
+                # The state can be added to the opened stack.
+                opened.append(next_state)
+                # The stack_number, idx(next_state.x), idx(next_state.y) tuple 
+                # has now been visited, so it can be closed.
+                closed[stack_number][idx(next_state.x)][idx(next_state.y)] = 1
+                # The next_state came from the current state, and that is recorded.
+                came_from[stack_number][idx(next_state.x)][idx(next_state.y)] = current
+
+
+------ 15. Implement Hybrid A* in C++ (solution)
+---main.cpp
+#include <iostream>
+#include <fstream>
+#include <math.h>
+#include <vector>
+#include "hybrid_breadth_first.h"
+
+using namespace std;
+
+
+int X = 1;
+int _ = 0;
+
+double SPEED = 1.45;
+double LENGTH = 0.5;
+
+vector< vector<int> > MAZE = {
+    {_,X,X,_,_,_,_,_,_,_,X,X,_,_,_,_,},
+    {_,X,X,_,_,_,_,_,_,X,X,_,_,_,_,_,},
+    {_,X,X,_,_,_,_,_,X,X,_,_,_,_,_,_,},
+    {_,X,X,_,_,_,_,X,X,_,_,_,X,X,X,_,},
+    {_,X,X,_,_,_,X,X,_,_,_,X,X,X,_,_,},
+    {_,X,X,_,_,X,X,_,_,_,X,X,X,_,_,_,},
+    {_,X,X,_,X,X,_,_,_,X,X,X,_,_,_,_,},
+    {_,X,X,X,X,_,_,_,X,X,X,_,_,_,_,_,},
+    {_,X,X,X,_,_,_,X,X,X,_,_,_,_,_,_,},
+    {_,X,X,_,_,_,X,X,X,_,_,X,X,X,X,X,},
+    {_,X,_,_,_,X,X,X,_,_,X,X,X,X,X,X,},
+    {_,_,_,_,X,X,X,_,_,X,X,X,X,X,X,X,},
+    {_,_,_,X,X,X,_,_,X,X,X,X,X,X,X,X,},
+    {_,_,X,X,X,_,_,X,X,X,X,X,X,X,X,X,},
+    {_,X,X,X,_,_,_,_,_,_,_,_,_,_,_,_,},
+    {X,X,X,_,_,_,_,_,_,_,_,_,_,_,_,_,},
+};
+
+
+vector< vector<int> > GRID = MAZE;
+
+vector<double> START = {0.0,0.0,0.0};
+vector<int> GOAL = {(int)GRID.size()-1, (int)GRID[0].size()-1};
+
+int main() {
+
+  cout << "Finding path through grid:" << endl;
+  
+  // TODO:: Create an Empty Maze and try testing the number of expansions with it
+  
+  for(int i = 0; i < GRID.size(); i++)
+  {
+    cout << GRID[i][0];
+    for(int j = 1; j < GRID[0].size(); j++)
+    {
+      cout << "," << GRID[i][j];
+    }
+    cout << endl;
+  }
+
+  HBF hbf = HBF();
+
+  HBF::maze_path get_path = hbf.search(GRID,START,GOAL);
+
+  vector<HBF::maze_s> show_path = hbf.reconstruct_path(get_path.came_from, START, get_path.final);
+
+  cout << "show path from start to finish" << endl;
+  for(int i = show_path.size()-1; i >= 0; i--)
+  {
+      
+      HBF::maze_s step = show_path[i];
+      cout << "##### step " << step.g << " #####" << endl;
+      cout << "x " << step.x << endl;
+      cout << "y " << step.y << endl;
+      cout << "theta " << step.theta << endl;
+
+  }
+  
+  return 0;
+}
+---hibrid_breadth_first.cpp
+#include <algorithm>
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <math.h>
+#include <vector>
+#include "hybrid_breadth_first.h"
+
+using namespace std;
+
+
+/**
+ * Initializes HBF
+ */
+HBF::HBF() {
+
+}
+
+HBF::~HBF() {}
+
+bool HBF::compare_maze_s(const HBF::maze_s & lhs, const HBF::maze_s & rhs) {
+    return lhs.f < rhs.f;
+}
+
+double HBF::heuristic(double x, double y, vector<int> goal){
+  return fabs(y - goal[0]) + fabs(x - goal[1]); //return grid distance to goal
+}
+
+int HBF::theta_to_stack_number(double theta){
+  /*
+  Takes an angle (in radians) and returns which "stack" in the 3D configuration space
+  this angle corresponds to. Angles near 0 go in the lower stacks while angles near 
+  2 * pi go in the higher stacks.
+  */
+
+  double new_theta = fmod((theta + 2 * M_PI),(2 * M_PI));
+  int stack_number = (int)(round(new_theta * NUM_THETA_CELLS / (2*M_PI))) % NUM_THETA_CELLS;
+  return stack_number;
+}
+
+
+int HBF::idx(double float_num) {
+  /*
+  Returns the index into the grid for continuous position. So if x is 3.621, then this
+  would return 3 to indicate that 3.621 corresponds to array index 3.
+  */
+
+  return int(floor(float_num));
+}
+
+
+vector<HBF::maze_s> HBF::expand(HBF::maze_s state, vector<int> goal) {
+  int g = state.g;
+  double x = state.x;
+  double y = state.y;
+  double theta = state.theta;
+    
+  int g2 = g+1;
+  vector<HBF::maze_s> next_states;
+  for(double delta_i = -35; delta_i < 40; delta_i+=5)
+  {
+
+    double delta = M_PI / 180.0 * delta_i;
+    double omega = SPEED / LENGTH * tan(delta);
+    double theta2 = theta + omega;
+    if(theta2 < 0)
+    {
+    	theta2 += 2*M_PI;
+    }
+    double x2 = x + SPEED * cos(theta);
+    double y2 = y + SPEED * sin(theta);
+    HBF::maze_s state2;
+    state2.f = g2 + heuristic(x2, y2, goal);
+    state2.g = g2;
+    state2.x = x2;
+    state2.y = y2;
+    state2.theta = theta2;
+    next_states.push_back(state2);
+
+  }
+  return next_states;
+}
+
+vector< HBF::maze_s> HBF::reconstruct_path(vector< vector< vector<HBF::maze_s> > > came_from, vector<double> start, HBF::maze_s final){
+
+	vector<maze_s> path = {final};
+	
+	int stack = theta_to_stack_number(final.theta);
+
+	maze_s current = came_from[stack][idx(final.x)][idx(final.y)];
+	
+	stack = theta_to_stack_number(current.theta);
+	
+	double x = current.x;
+	double y = current.y;
+	while( x != start[0] || y != start[1] )
+	{
+		path.push_back(current);
+		current = came_from[stack][idx(x)][idx(y)];
+		x = current.x;
+		y = current.y;
+		stack = theta_to_stack_number(current.theta);
+	}
+	
+	return path;
+
+}
+
+HBF::maze_path HBF::search(vector< vector<int> > grid, vector<double> start, vector<int> goal) {
+  /*
+  Working Implementation of breadth first search. Does NOT use a heuristic
+  and as a result this is pretty inefficient. Try modifying this algorithm 
+  into hybrid A* by adding heuristics appropriately.
+  */
+
+  vector< vector< vector<int> > > closed(NUM_THETA_CELLS, vector<vector<int>>(grid[0].size(), vector<int>(grid.size())));
+  vector< vector< vector<maze_s> > > came_from(NUM_THETA_CELLS, vector<vector<maze_s>>(grid[0].size(), vector<maze_s>(grid.size())));
+  double theta = start[2];
+  int stack = theta_to_stack_number(theta);
+  int g = 0;
+
+  maze_s state;
+  state.g = g;
+  state.x = start[0];
+  state.y = start[1];
+  state.f = g + heuristic(state.x, state.y, goal);
+  state.theta = theta;
+
+  closed[stack][idx(state.x)][idx(state.y)] = 1;
+  came_from[stack][idx(state.x)][idx(state.y)] = state;
+  int total_closed = 1;
+  vector<maze_s> opened = {state};
+  bool finished = false;
+  while(!opened.empty())
+  {
+    sort(opened.begin(), opened.end(), compare_maze_s);
+    maze_s current = opened[0]; //grab first elment
+    opened.erase(opened.begin()); //pop first element
+
+    int x = current.x;
+    int y = current.y;
+
+    if(idx(x) == goal[0] && idx(y) == goal[1])
+    {
+      cout << "found path to goal in " << total_closed << " expansions" << endl;
+      maze_path path;
+      path.came_from = came_from;
+      path.closed = closed;
+      path.final = current;
+      return path;
+
+    }
+    vector<maze_s> next_state = expand(current, goal);
+
+    for(int i = 0; i < next_state.size(); i++)
+    {
+      int g2 = next_state[i].g;
+      double x2 = next_state[i].x;
+      double y2 = next_state[i].y;
+      double theta2 = next_state[i].theta;
+
+      if((x2 < 0 || x2 >= grid.size()) || (y2 < 0 || y2 >= grid[0].size()))
+      {
+        //invalid cell
+        continue;
+      }
+      int stack2 = theta_to_stack_number(theta2);
+
+      if(closed[stack2][idx(x2)][idx(y2)] == 0 && grid[idx(x2)][idx(y2)] == 0)
+      {
+
+        opened.push_back(next_state[i]);
+        closed[stack2][idx(x2)][idx(y2)] = 1;
+        came_from[stack2][idx(x2)][idx(y2)] = current;
+        total_closed += 1;
+      }
+
+
+    }
+
+  }
+  cout << "no valid path." << endl;
+  HBF::maze_path path;
+  path.came_from = came_from;
+  path.closed = closed;
+  path.final = state;
+  return path;
+
+}
+
+
+---hibrid_breadth_first.h
+#ifndef HYBRID_BREADTH_FIRST_H_
+#define HYBRID_BREADTH_FIRST_H_
+
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <math.h>
+#include <vector>
+
+using namespace std;
+
+class HBF {
+public:
+
+	int NUM_THETA_CELLS = 90;
+	double SPEED = 1.45;
+	double LENGTH = 0.5;
+
+	struct maze_s {
+	
+		int g;	// iteration
+		int f;
+		double x;
+		double y;
+		double theta;
+	};
+
+	struct maze_path {
+	
+		vector< vector< vector<int> > > closed;
+		vector< vector< vector<maze_s> > > came_from;
+		maze_s final;
+
+	};
+
+
+	/**
+  	* Constructor
+  	*/
+ 	HBF();
+
+	/**
+ 	* Destructor
+ 	*/
+ 	virtual ~HBF();
+ 	
+ 	static bool compare_maze_s(const HBF::maze_s & lhs, const HBF::maze_s & rhs);
+    
+    double heuristic(double x, double y, vector<int> goal);
+     	
+ 	int theta_to_stack_number(double theta);
+
+  	int idx(double float_num);
+
+  	vector<maze_s> expand(maze_s state, vector<int> goal);
+
+  	maze_path search(vector< vector<int> > grid, vector<double> start, vector<int> goal);
+
+  	vector<maze_s> reconstruct_path(vector< vector< vector<maze_s> > > came_from, vector<double> start, HBF::maze_s final);
+  	
+
+};
+
+#endif
+
+
+----------- Frenet Reminder
+Frenet座標系を使用します。ここでは、S座標が道路沿いの動きを縦方向の動き、Dの座標が横方向または横方向の動きを示します。
+
+
+----------- 28. Implement Quintic Polynomial Solver Solution
+#include <iostream>
+#include <fstream>
+#include <cmath>
+#include <vector>
+
+#include "Dense"
+
+using namespace std;
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
+// TODO - complete this function
+vector<double> JMT(vector< double> start, vector <double> end, double T)
+{
+    /*
+    Calculate the Jerk Minimizing Trajectory that connects the initial state
+    to the final state in time T.
+
+    INPUTS
+
+    start - the vehicles start location given as a length three array
+        corresponding to initial values of [s, s_dot, s_double_dot]
+
+    end   - the desired end state for vehicle. Like "start" this is a
+        length three array.
+
+    T     - The duration, in seconds, over which this maneuver should occur.
+
+    OUTPUT 
+    an array of length 6, each value corresponding to a coefficent in the polynomial 
+    s(t) = a_0 + a_1 * t + a_2 * t**2 + a_3 * t**3 + a_4 * t**4 + a_5 * t**5
+
+    EXAMPLE
+
+    > JMT( [0, 10, 0], [10, 10, 0], 1)
+    [0.0, 10.0, 0.0, 0.0, 0.0, 0.0]
+    */
+    
+    MatrixXd A = MatrixXd(3, 3);
+	A << T*T*T, T*T*T*T, T*T*T*T*T,
+			    3*T*T, 4*T*T*T,5*T*T*T*T,
+			    6*T, 12*T*T, 20*T*T*T;
+		
+	MatrixXd B = MatrixXd(3,1);	    
+	B << end[0]-(start[0]+start[1]*T+.5*start[2]*T*T),
+			    end[1]-(start[1]+start[2]*T),
+			    end[2]-start[2];
+			    
+	MatrixXd Ai = A.inverse();
+	
+	MatrixXd C = Ai*B;
+	
+	vector <double> result = {start[0], start[1], .5*start[2]};
+	for(int i = 0; i < C.size(); i++)
+	{
+	    result.push_back(C.data()[i]);
+	}
+	
+    return result;
+    
+}
+
+bool close_enough(vector< double > poly, vector<double> target_poly, double eps=0.01) {
+
+
+	if(poly.size() != target_poly.size())
+	{
+		cout << "your solution didn't have the correct number of terms" << endl;
+		return false;
+	}
+	for(int i = 0; i < poly.size(); i++)
+	{
+		double diff = poly[i]-target_poly[i];
+		if(abs(diff) > eps)
+		{
+			cout << "at least one of your terms differed from target by more than " << eps << endl;
+			return false;
+		}
+
+	}
+	return true;
+}
+	
+struct test_case {
+	
+		vector<double> start;
+		vector<double> end;
+		double T;
+};
+
+vector< vector<double> > answers = {{0.0, 10.0, 0.0, 0.0, 0.0, 0.0},{0.0,10.0,0.0,0.0,-0.625,0.3125},{5.0,10.0,1.0,-3.0,0.64,-0.0432}};
+
+int main() {
+
+	//create test cases
+
+	vector< test_case > tc;
+
+	test_case tc1;
+	tc1.start = {0,10,0};
+	tc1.end = {10,10,0};
+	tc1.T = 1;
+	tc.push_back(tc1);
+
+	test_case tc2;
+	tc2.start = {0,10,0};
+	tc2.end = {20,15,20};
+	tc2.T = 2;
+	tc.push_back(tc2);
+
+	test_case tc3;
+	tc3.start = {5,10,2};
+	tc3.end = {-30,-20,-4};
+	tc3.T = 5;
+	tc.push_back(tc3);
+
+	bool total_correct = true;
+	for(int i = 0; i < tc.size(); i++)
+	{
+		vector< double > jmt = JMT(tc[i].start, tc[i].end, tc[i].T);
+		bool correct = close_enough(jmt,answers[i]);
+		total_correct &= correct;
+
+	}
+	if(!total_correct)
+	{
+		cout << "Try again!" << endl;
+	}
+	else
+	{
+		cout << "Nice work!" << endl;
+	}
+
+	return 0;
+}
+
+----------- 34. Conclusion
+---------------
+0	このレッスンでは、軌道生成問題に対するいくつかのアプローチを見てきました。
+1	自走車が遭遇するすべての状況に最適なものはありません。
+2	実際には、ほとんどの自家用車には、状況に応じて使用できるいくつかの軌道計画があります。
+3	車は、駐車場でハイブリッド型を使用し、低交通量の高速道路では多項式軌道生成を行い、交差点、高トラフィックなどの状況では多項式軌道生成を使用することがあります。
+4	最終的なプロジェクトでは、軌道生成の実装方法を選択できます。
+5	しかし、多項式軌道生成はこの問題に適していることが分かります。
+6	幸運と安全運転。
+---------------
+
+
+
